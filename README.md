@@ -1,12 +1,16 @@
-2 servicios: cliente_Api, y el servicio procesoDoc_Api, en Node.js y RabitMQ.
+En el siguiente proyecto se crearon dos servicios en Node.js y RabbitMQ:
+1. Servicio Cliente (cliente_Api): 
+   - Recibe un arreglo de documentos del cliente. Verifica que el número de documentos esté entre 5 y 100.
+   - Este servicio podrá enviar, mediante una API REST (JSON)
+   - Cada minuto, consultará automáticamente el estado de los documentos enviados que puede ser "en proceso", "Rechazado" o "Aceptado".
+2. Servicio Estado Documento (procesoDoc_Api):
+	- Recibe documentos del cliente_Api y los coloca en una cola de RabbitMQ.
+	- Informa al cliente_Api que los documentos están "En Proceso".
+      - Cambia el estado de los documentos de "En Proceso" a "Rechazado" o "Aceptado" después de un minuto.
+	- Permite al cliente_Api consultar el estado actual de los documentos.
 
-cliente_Api enviara documentos al servicio procesoDoc_APi, el envió sera por APIREST (Json), puede ser de 5 documentos a mas al mismo tiempo, cada 1 minuto el cliente_Api consultara el estado de los documentos enviados. Hasta que tenga una confirmación: "Rechazado" o "Aceptado".
-
-Servicio procesoDoc_Api, ese servicio tendrá 2 EndPoints:
-
-primer endpoint: Recepcionara los documentos y enviara un mensaje "En
-Proceso", al cliente_Api.
-
-segundo endpoint: Aqui se realizaran las consultas del estado del documento "Rechazado" o "Aceptado".
-
-En el servicio procesoDoc_Api los documentos que recepciono, despues de 1 minuto, que cambie del estado de "En Proceso" a un nuevo estado "Rechazado" o "Aceptado", el nuevo estado sera de manera aleatoria. y saldra de la cola de RabbitMQ, y mostrara en que estado se encuentran los documentos cada que sean consultados.
+	Descripción del diagrama (Se realizo en Lucidchart para trabajar de manera colaborativa):
+1. El cliente_Api envía documentos al procesoDoc_Api a través de API REST.
+2. El procesoDoc_Api recibe los documentos y coloca en la cola de RabbitMQ luego envía un estado "En Proceso" de vuelta al cliente_Api.
+3. Después de un minuto, el procesoDoc_Api cambia aleatoriamente el estado de los documentos a "Rechazado" o "Aceptado".
+4. El cliente_Api consulta periódicamente el estado de los documentos hasta que reciban una confirmación final de aceptado o rechazado.
