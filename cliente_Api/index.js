@@ -9,8 +9,8 @@ app.post('/sendDocuments', async (req, res) => {
   const documents = req.body.documents;
 
   // Verificar que los documentos sean un arreglo y estén entre 50 y 100
-  if (!Array.isArray(documents) || documents.length < 5 || documents.length > 100) {
-    return res.status(400).send('Por favor envíe entre 5 y 100 documentos.');
+  if (!Array.isArray(documents) || documents.length < 50 || documents.length > 100) {
+    return res.status(400).send('Por favor envíe entre 50 y 100 documentos.');
   }
 
   try {

@@ -12,8 +12,6 @@ async function connectRabbitMQ() {
     const connection = await amqp.connect('amqp://guest:guest@localhost');
     // Crear un canal de comunicación
     const channel = await connection.createChannel();
-    // Asegurarse de que la cola 'documentsQueue' exista
-    await channel.assertQueue('documentsQueue');
     return channel;
   } catch (error) {
     console.error('Error conectando a RabbitMQ', error);
@@ -34,14 +32,19 @@ app.post('/processDocuments', async (req, res) => {
     // Conectar a RabbitMQ
     const channel = await connectRabbitMQ();
 
-    // Enviar cada documento a la cola con estado 'en proceso'
-    documents.forEach(doc => {
+    // Enviar cada documento a una cola individual con estado 'en proceso'
+    documents.forEach(async doc => {
+      const queueName = `documentsQueue_${doc.id}`; // Crear una cola única para cada documento
       const status = { ...doc, status: 'en proceso' };
-      channel.sendToQueue('documentsQueue', Buffer.from(JSON.stringify(status)));
+      await channel.assertQueue(queueName);
+      channel.sendToQueue(queueName, Buffer.from(JSON.stringify(status)));
     });
 
+    // Procesar la cola de documentos
+    await processQueue(channel, documents);
+
     // Procesar cada documento y actualizar el estado
-    const processedDocuments = await processDocuments(channel, documents);
+    const processedDocuments = await processDocuments(documents);
 
     res.send(processedDocuments);
   } catch (error) {
@@ -50,7 +53,7 @@ app.post('/processDocuments', async (req, res) => {
 });
 
 // Función para procesar documentos y actualizar su estado
-async function processDocuments(channel, documents) {
+async function processDocuments(documents) {
   const processedDocuments = documents.map(doc => {
     // Asignar un estado aleatorio de 'aceptado' o 'rechazado' al documento
     const status = { ...doc, status: Math.random() > 0.5 ? 'aceptado' : 'rechazado' };
@@ -66,21 +69,23 @@ async function processDocuments(channel, documents) {
 }
 
 // Función para procesar la cola de RabbitMQ
-async function processQueue() {
-  const channel = await connectRabbitMQ();
-  // Consumir mensajes de la cola 'documentsQueue'
-  channel.consume('documentsQueue', async (msg) => {
-    if (msg !== null) {
-      const document = JSON.parse(msg.content.toString());
-      console.log('Procesando documento:', document);
-      // Confirmar que el mensaje ha sido procesado
-      channel.ack(msg);
-    }
+async function processQueue(channel, documents) {
+  // Consumir mensajes de colas individuales
+  documents.forEach(async doc => {
+    const queueName = `documentsQueue_${doc.id}`; // Usar la cola única para cada documento
+    await channel.assertQueue(queueName);
+    channel.consume(queueName, async (msg) => {
+      if (msg !== null) {
+        const document = JSON.parse(msg.content.toString());
+        console.log('Procesando documento:', document);
+        // Confirmar que el mensaje ha sido procesado
+        channel.ack(msg);
+      }
+    });
   });
 }
 
 // Iniciar el servidor
 app.listen(3001, () => {
   console.log('procesoDoc_api escuchando en el puerto 3001');
-  processQueue(); // Iniciar el procesamiento de la cola
 });
