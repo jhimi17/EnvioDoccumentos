@@ -5,85 +5,60 @@ const axios = require('axios');
 const app = express();
 app.use(express.json());
 
+let documents = [];
+
 // Función para conectar a RabbitMQ
 async function connectRabbitMQ() {
   try {
-    // Conectar a RabbitMQ usando las credenciales predeterminadas
     const connection = await amqp.connect('amqp://guest:guest@localhost');
-    // Crear un canal de comunicación
     const channel = await connection.createChannel();
+    await channel.assertQueue('documentsQueue');
     return channel;
   } catch (error) {
     console.error('Error conectando a RabbitMQ', error);
-    process.exit(1); // Salir del proceso en caso de error
+    process.exit(1);
   }
 }
 
 // Ruta POST para procesar documentos
 app.post('/processDocuments', async (req, res) => {
-  const documents = req.body.documents;
-
-  // Verificar que los documentos sean un arreglo
-  if (!Array.isArray(documents)) {
-    return res.status(400).send('Formato de documento inválido');
-  }
+  documents = req.body.documents.map(doc => ({ ...doc, status: 'En Proceso' }));
 
   try {
-    // Conectar a RabbitMQ
     const channel = await connectRabbitMQ();
 
-    // Enviar cada documento a una cola individual con estado 'en proceso'
-    documents.forEach(async doc => {
-      const queueName = `documentsQueue_${doc.id}`; // Crear una cola única para cada documento
-      const status = { ...doc, status: 'en proceso' };
-      await channel.assertQueue(queueName);
-      channel.sendToQueue(queueName, Buffer.from(JSON.stringify(status)));
+    documents.forEach(doc => {
+      channel.sendToQueue('documentsQueue', Buffer.from(JSON.stringify(doc)));
     });
 
-    // Procesar la cola de documentos
-    await processQueue(channel, documents);
+    // Enviar mensaje de "En Proceso" a cliente_api
+    await Promise.all(documents.map(doc => axios.post('http://localhost:3000/updateStatus', doc)));
 
-    // Procesar cada documento y actualizar el estado
-    const processedDocuments = await processDocuments(documents);
+    res.send({ message: 'Documentos en proceso' });
 
-    res.send(processedDocuments);
+    // Cambiar estado de los documentos después de 1 minuto
+    setTimeout(() => {
+      documents = documents.map(doc => {
+        doc.status = Math.random() > 0.5 ? 'Aceptado' : 'Rechazado';
+        return doc;
+      });
+      console.log('Estados de documentos actualizados:', documents);
+    }, 60000); // 1 minuto
   } catch (error) {
     res.status(500).send('Error procesando documentos: ' + error.message);
   }
 });
 
-// Función para procesar documentos y actualizar su estado
-async function processDocuments(documents) {
-  const processedDocuments = documents.map(doc => {
-    // Asignar un estado aleatorio de 'aceptado' o 'rechazado' al documento
-    const status = { ...doc, status: Math.random() > 0.5 ? 'aceptado' : 'rechazado' };
-    return status;
+// Ruta POST para consultar el estado de los documentos
+app.post('/checkDocumentStatus', (req, res) => {
+  const requestDocs = req.body.documents;
+  const responseDocs = requestDocs.map(reqDoc => {
+    const doc = documents.find(d => d.id === reqDoc.id);
+    return doc ? { ...reqDoc, status: doc.status } : reqDoc;
   });
 
-  // Enviar actualizaciones de estado de vuelta a cliente_api
-  processedDocuments.forEach(async doc => {
-    await axios.post('http://localhost:3000/updateStatus', doc);
-  });
-
-  return processedDocuments;
-}
-
-// Función para procesar la cola de RabbitMQ
-async function processQueue(channel, documents) {
-  // Consumir mensajes de colas individuales
-  documents.forEach(async doc => {
-    const queueName = `documentsQueue_${doc.id}`; // Usar la cola única para cada documento
-    await channel.assertQueue(queueName);
-    channel.consume(queueName, async (msg) => {
-      if (msg !== null) {
-        const document = JSON.parse(msg.content.toString());
-        console.log('Procesando documento:', document);
-        // Confirmar que el mensaje ha sido procesado
-        channel.ack(msg);
-      }
-    });
-  });
-}
+  res.send({ documents: responseDocs });
+});
 
 // Iniciar el servidor
 app.listen(3001, () => {
