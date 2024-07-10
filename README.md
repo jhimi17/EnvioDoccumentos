@@ -6,7 +6,7 @@ En el siguiente proyecto se crearon dos servicios en Node.js y RabbitMQ:
 2. Servicio Estado Documento (procesoDoc_Api):
 	- Recibe documentos del cliente_Api y los coloca en una cola de RabbitMQ.
 	- Informa al cliente_Api que los documentos están "En Proceso".
-        - Cambia el estado de los documentos de "En Proceso" a "Rechazado" o "Aceptado" después de un minuto.
+     	- Cambia el estado de los documentos de "En Proceso" a "Rechazado" o "Aceptado" después de un minuto.
 	- Permite al cliente_Api consultar el estado actual de los documentos.
 
 Descripción del diagrama (Se realizo en Lucidchart para trabajar de manera colaborativa):
